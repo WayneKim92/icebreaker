@@ -51,6 +51,8 @@ func setup_network():
 	network_manager.question_received.connect(_on_question_received)
 	network_manager.all_questions_ready.connect(_on_all_questions_ready)
 	network_manager.game_state_changed.connect(_on_game_state_changed)
+	network_manager.score_updated.connect(_on_score_updated)
+	network_manager.all_scores_received.connect(_on_all_scores_received)
 
 func setup_ui():
 	# 메인 UI 컨테이너
@@ -584,11 +586,14 @@ func show_round_results(correct_qna, my_guess):
 	my_result.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	game_container.add_child(my_result)
 	
-	# 현재 점수 표시
+	# 현재 점수 표시 및 네트워크로 전송
 	var score_label = Label.new()
 	score_label.text = "\n내 점수: %d점" % player_scores[my_player_name]
 	score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	game_container.add_child(score_label)
+	
+	# 점수를 네트워크로 전송
+	network_manager.rpc("submit_player_score", my_player_name, player_scores[my_player_name])
 	
 	# 다음 버튼
 	var next_button = Button.new()
@@ -610,6 +615,17 @@ func show_final_results():
 	game_scroll_container.visible = false
 	result_scroll_container.visible = true
 	
+	# 최종 점수를 네트워크로 전송
+	network_manager.rpc("submit_player_score", my_player_name, player_scores[my_player_name])
+	
+	setup_results_ui()
+	
+	# 1초 후 점수 동기화 요청 (모든 플레이어가 결과 화면에 도달할 시간)
+	await get_tree().create_timer(1.0).timeout
+	if is_host:
+		network_manager.broadcast_all_scores()
+
+func setup_results_ui():
 	clear_container(result_container)
 	
 	# 최종 결과 제목
@@ -624,13 +640,96 @@ func show_final_results():
 	my_score_label.text = "내 최종 점수: %d점" % player_scores[my_player_name]
 	my_score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	my_score_label.add_theme_font_size_override("font_size", 24)
+	my_score_label.add_theme_color_override("font_color", Color.BLUE)
 	result_container.add_child(my_score_label)
+	
+	result_container.add_child(HSeparator.new())
+	
+	# 모든 플레이어 점수 섹션
+	var all_scores_title = Label.new()
+	all_scores_title.text = "📊 모든 플레이어 점수"
+	all_scores_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	all_scores_title.add_theme_font_size_override("font_size", 20)
+	result_container.add_child(all_scores_title)
+	
+	# 점수 목록 컨테이너 (동적으로 업데이트됨)
+	var scores_container = VBoxContainer.new()
+	scores_container.name = "ScoresContainer"
+	scores_container.add_theme_constant_override("separation", 5)
+	result_container.add_child(scores_container)
+	
+	# 로딩 메시지
+	var loading_label = Label.new()
+	loading_label.text = "⏳ 다른 플레이어들의 점수를 받아오는 중..."
+	loading_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	loading_label.add_theme_color_override("font_color", Color.GRAY)
+	scores_container.add_child(loading_label)
+	
+	result_container.add_child(HSeparator.new())
 	
 	# 다시 시작 버튼
 	var restart_button = Button.new()
 	restart_button.text = "🔄 새 게임하기"
 	restart_button.pressed.connect(restart_game)
 	result_container.add_child(restart_button)
+
+# 점수 관련 콜백 함수들
+func _on_score_updated(_player_id, _score):
+	# 개별 점수 업데이트 - 현재는 사용하지 않음
+	pass
+
+func _on_all_scores_received(scores_data):
+	print("모든 플레이어 점수 수신: ", scores_data)
+	update_all_scores_display(scores_data)
+
+func update_all_scores_display(scores_data: Dictionary):
+	var scores_container = result_container.get_node("ScoresContainer")
+	if not scores_container:
+		return
+	
+	# 기존 점수 목록 지우기
+	for child in scores_container.get_children():
+		child.queue_free()
+	
+	# 점수 순으로 정렬
+	var sorted_scores = []
+	for player_name in scores_data:
+		sorted_scores.append({"name": player_name, "score": scores_data[player_name]})
+	
+	sorted_scores.sort_custom(func(a, b): return a.score > b.score)
+	
+	# 순위 표시
+	for i in range(sorted_scores.size()):
+		var player_data = sorted_scores[i]
+		var rank_text = ""
+		var rank_color = Color.WHITE
+		
+		match i:
+			0: 
+				rank_text = "🥇 1위: %s (%d점)" % [player_data.name, player_data.score]
+				rank_color = Color.GOLD
+			1: 
+				rank_text = "🥈 2위: %s (%d점)" % [player_data.name, player_data.score]
+				rank_color = Color.SILVER
+			2: 
+				rank_text = "🥉 3위: %s (%d점)" % [player_data.name, player_data.score]
+				rank_color = Color("#CD7F32")  # Bronze color
+			_: 
+				rank_text = "%d위: %s (%d점)" % [i + 1, player_data.name, player_data.score]
+				rank_color = Color.WHITE
+		
+		var rank_label = Label.new()
+		rank_label.text = rank_text
+		rank_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		rank_label.add_theme_font_size_override("font_size", 18)
+		rank_label.add_theme_color_override("font_color", rank_color)
+		
+		# 자신의 점수는 배경색으로 강조
+		if player_data.name == my_player_name:
+			rank_label.add_theme_color_override("font_color", Color.CYAN)
+			rank_label.text += " ⭐"
+		
+		scores_container.add_child(rank_label)
 
 func restart_game():
 	# 네트워크 연결 해제

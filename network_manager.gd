@@ -7,6 +7,8 @@ signal player_disconnected(id)
 signal game_state_changed(new_state)
 signal question_received(player_id, questions)
 signal all_questions_ready()
+signal score_updated(player_id, score)
+signal all_scores_received(scores_data)
 
 const PORT = 7000
 const MAX_PLAYERS = 5
@@ -124,6 +126,38 @@ func get_all_questions_data():
 				all_questions_data.append(question)
 	return all_questions_data
 
+@rpc("any_peer", "call_local")
+func submit_player_score(player_name: String, score: int):
+	var sender_id = multiplayer.get_remote_sender_id()
+	if sender_id == 0:  # 로컬 호스트인 경우
+		sender_id = 1
+	
+	print("점수 수신: ", player_name, " - ", score, "점")
+	
+	if sender_id in connected_players:
+		connected_players[sender_id]["score"] = score
+		connected_players[sender_id]["name"] = player_name
+		score_updated.emit(sender_id, score)
+		
+		# 서버인 경우 모든 클라이언트에게 점수 데이터 동기화
+		if is_server:
+			broadcast_all_scores()
+
+func broadcast_all_scores():
+	var scores_data = {}
+	for player_id in connected_players:
+		var player = connected_players[player_id]
+		if player.has("name"):
+			scores_data[player.name] = player.get("score", 0)
+	
+	print("모든 플레이어 점수 브로드캐스트: ", scores_data)
+	rpc("sync_all_scores", scores_data)
+
+@rpc("authority", "call_local")
+func sync_all_scores(scores_data: Dictionary):
+	print("점수 데이터 동기화 수신: ", scores_data)
+	all_scores_received.emit(scores_data)
+
 @rpc("authority", "call_local")
 func start_game_phase(phase: String, data: Dictionary = {}):
 	game_state_changed.emit({"phase": phase, "data": data})
@@ -162,4 +196,5 @@ func disconnect_from_game():
 	if multiplayer.multiplayer_peer:
 		multiplayer.multiplayer_peer.close()
 	connected_players.clear()
+	player_info = {"name": "", "id": 0}
 	is_server = false
