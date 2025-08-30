@@ -304,14 +304,35 @@ func _on_start_question_phase():
 
 func _on_game_state_changed(state_data):
 	var phase = state_data.phase
-	var _data = state_data.get("data", {})
+	var data = state_data.get("data", {})
 	
 	match phase:
 		"INPUT_QNA":
 			setup_question_input()
+		"START_QUIZ":
+			print("퀴즈 시작 신호를 받았습니다!")
+			# 클라이언트인 경우 서버에서 보낸 질문 데이터를 사용
+			if not is_host and data.has("all_questions"):
+				print("서버에서 받은 질문 데이터로 퀴즈를 시작합니다.")
+				sync_questions_from_server(data.all_questions)
+			start_quiz_round()
 		"sync":
 			# 게임 데이터 동기화
 			pass
+
+func sync_questions_from_server(all_questions_data):
+	# 서버에서 받은 모든 질문 데이터를 로컬에 동기화
+	print("서버에서 %d개의 질문을 받았습니다." % all_questions_data.size())
+	
+	# 플레이어별로 질문 분류
+	player_questions.clear()
+	for question_data in all_questions_data:
+		var player_name = question_data.player
+		if not player_questions.has(player_name):
+			player_questions[player_name] = []
+		player_questions[player_name].append(question_data)
+	
+	print("동기화된 플레이어 질문들: ", player_questions.keys())
 
 func _on_question_received(player_id, questions):
 	# 질문 수신 처리
@@ -320,9 +341,10 @@ func _on_question_received(player_id, questions):
 	print("질문 수신: ", player_name, " - ", questions.size(), "개")
 
 func _on_all_questions_ready():
-	# 모든 질문이 준비되면 게임 시작
-	if is_host:
-		start_quiz_round()
+	print("모든 질문이 준비되었습니다!")
+	# 네트워크 매니저가 자동으로 START_QUIZ 신호를 보내므로
+	# 호스트도 다른 플레이어와 동일하게 신호를 기다립니다.
+	print("퀴즈 시작 신호를 기다리는 중...")
 
 func setup_question_input():
 	current_state = GameState.INPUT_QNA
@@ -419,13 +441,18 @@ func _on_submit_questions(qna_inputs):
 		show_message("3개의 질문을 모두 입력해주세요!")
 		return
 	
+	print("%s가 질문 %d개를 제출합니다." % [my_player_name, questions.size()])
+	
 	# 네트워크로 질문 전송
 	network_manager.rpc("submit_questions", questions)
 	
 	# UI 업데이트 - 제출 완료 상태
 	var status_label = input_container.get_node("StatusLabel")
 	if status_label:
-		status_label.text = "✅ 질문이 제출되었습니다! 다른 플레이어를 기다리는 중..."
+		if is_host:
+			status_label.text = "✅ 질문이 제출되었습니다! 다른 플레이어를 기다리는 중...\n모든 플레이어가 제출하면 자동으로 퀴즈가 시작됩니다."
+		else:
+			status_label.text = "✅ 질문이 제출되었습니다! 호스트와 다른 플레이어를 기다리는 중...\n모든 플레이어가 제출하면 자동으로 퀴즈가 시작됩니다."
 		status_label.add_theme_color_override("font_color", Color.GREEN)
 	
 	# 입력 필드 비활성화
@@ -434,6 +461,9 @@ func _on_submit_questions(qna_inputs):
 		qna_input["answer"].editable = false
 
 func start_quiz_round():
+	print("퀴즈 라운드를 시작합니다!")
+	print("수집된 플레이어 질문들: ", player_questions.keys())
+	
 	current_state = GameState.PLAYING
 	input_scroll_container.visible = false
 	game_scroll_container.visible = true
@@ -443,6 +473,8 @@ func start_quiz_round():
 	for player_name in player_questions:
 		for question_data in player_questions[player_name]:
 			all_questions.append(question_data)
+			
+	print("총 %d개의 질문이 수집되었습니다." % all_questions.size())
 	
 	# 질문 순서 섞기
 	all_questions.shuffle()

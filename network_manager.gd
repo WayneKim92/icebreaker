@@ -67,29 +67,62 @@ func update_player_info(id: int, info: Dictionary):
 	print("플레이어 정보 업데이트: ", info.name, " (ID: ", id, ")")
 	print("현재 총 플레이어 수: ", connected_players.size())
 
-@rpc("any_peer")
+@rpc("any_peer", "call_local")
 func submit_questions(questions: Array):
 	var sender_id = multiplayer.get_remote_sender_id()
 	if sender_id == 0:  # 로컬 호스트인 경우
 		sender_id = 1
 	
+	print("질문 제출 - 발신자 ID: ", sender_id)
+	print("연결된 플레이어들: ", connected_players.keys())
+	
 	if sender_id in connected_players:
 		connected_players[sender_id]["questions"] = questions
 		question_received.emit(sender_id, questions)
-		print("질문 수신: ", connected_players[sender_id].name)
+		print("질문 수신: ", connected_players[sender_id].name, " - ", questions.size(), "개")
 		
 		# 모든 플레이어가 질문을 제출했는지 확인
 		check_all_questions_ready()
+	else:
+		print("경고: 발신자 ID ", sender_id, "가 연결된 플레이어 목록에 없습니다!")
 
 func check_all_questions_ready():
+	print("질문 제출 상태 확인 중...")
+	var ready_count = 0
+	var total_count = connected_players.size()
+	
 	for player_id in connected_players:
 		var player = connected_players[player_id]
-		if not player.has("questions") or player.questions.size() == 0:
-			return false
+		if player.has("questions") and player.questions.size() > 0:
+			ready_count += 1
+			print("  - ", player.name, ": 질문 ", player.questions.size(), "개 제출됨")
+		else:
+			print("  - ", player.name, ": 질문 미제출")
 	
-	print("모든 플레이어의 질문이 준비되었습니다!")
-	all_questions_ready.emit()
-	return true
+	print("진행 상황: %d/%d 플레이어가 질문 제출 완료" % [ready_count, total_count])
+	
+	if ready_count == total_count and total_count > 0:
+		print("모든 플레이어의 질문이 준비되었습니다!")
+		all_questions_ready.emit()
+		
+		# 서버(호스트)만 클라이언트들에게 퀴즈 시작 신호를 보냄
+		if is_server:
+			print("호스트가 모든 클라이언트에게 퀴즈 시작 신호를 보냅니다.")
+			rpc("start_game_phase", "START_QUIZ", {"all_questions": get_all_questions_data()})
+		
+		return true
+	
+	return false
+
+func get_all_questions_data():
+	# 모든 질문 데이터를 수집하여 클라이언트에게 전송
+	var all_questions_data = []
+	for player_id in connected_players:
+		var player = connected_players[player_id]
+		if player.has("questions"):
+			for question in player.questions:
+				all_questions_data.append(question)
+	return all_questions_data
 
 @rpc("authority", "call_local")
 func start_game_phase(phase: String, data: Dictionary = {}):
