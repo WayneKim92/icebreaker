@@ -132,31 +132,47 @@ func submit_player_score(player_name: String, score: int):
 	if sender_id == 0:  # 로컬 호스트인 경우
 		sender_id = 1
 	
-	print("점수 수신: ", player_name, " - ", score, "점")
+	print("점수 수신: ", player_name, " - ", score, "점 (ID: ", sender_id, ")")
 	
 	if sender_id in connected_players:
 		connected_players[sender_id]["score"] = score
 		connected_players[sender_id]["name"] = player_name
 		score_updated.emit(sender_id, score)
-		
-		# 서버인 경우 모든 클라이언트에게 점수 데이터 동기화
-		if is_server:
-			broadcast_all_scores()
+		print("플레이어 ", player_name, "의 점수가 업데이트되었습니다.")
+	else:
+		print("경고: 발신자 ID ", sender_id, "가 연결된 플레이어 목록에 없습니다!")
+		print("현재 연결된 플레이어들: ", connected_players.keys())
 
 func broadcast_all_scores():
 	var scores_data = {}
+	var players_with_scores = 0
+	
 	for player_id in connected_players:
 		var player = connected_players[player_id]
-		if player.has("name"):
-			scores_data[player.name] = player.get("score", 0)
+		if player.has("name") and player.name != "":
+			var score = player.get("score", 0)
+			scores_data[player.name] = score
+			if player.has("score"):
+				players_with_scores += 1
 	
-	print("모든 플레이어 점수 브로드캐스트: ", scores_data)
+	print("점수 브로드캐스트 준비:")
+	print("  - 총 플레이어: ", connected_players.size())
+	print("  - 점수 있는 플레이어: ", players_with_scores)
+	print("  - 브로드캐스트할 점수 데이터: ", scores_data)
+	
 	rpc("sync_all_scores", scores_data)
 
 @rpc("authority", "call_local")
 func sync_all_scores(scores_data: Dictionary):
 	print("점수 데이터 동기화 수신: ", scores_data)
 	all_scores_received.emit(scores_data)
+
+@rpc("any_peer")
+func request_score_broadcast():
+	# 클라이언트가 점수 브로드캐스트를 요청할 때
+	if is_server:
+		print("클라이언트로부터 점수 동기화 요청을 받았습니다.")
+		broadcast_all_scores()
 
 @rpc("authority", "call_local")
 func start_game_phase(phase: String, data: Dictionary = {}):

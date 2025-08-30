@@ -616,12 +616,25 @@ func show_final_results():
 	result_scroll_container.visible = true
 	
 	# 최종 점수를 네트워크로 전송
+	print("최종 점수 전송: ", my_player_name, " - ", player_scores[my_player_name], "점")
 	network_manager.rpc("submit_player_score", my_player_name, player_scores[my_player_name])
 	
 	setup_results_ui()
 	
-	# 1초 후 점수 동기화 요청 (모든 플레이어가 결과 화면에 도달할 시간)
-	await get_tree().create_timer(1.0).timeout
+	# 점수 동기화를 위한 대기 및 요청
+	await get_tree().create_timer(1.5).timeout
+	print("점수 동기화 요청...")
+	
+	# 호스트든 클라이언트든 점수 동기화 요청
+	if is_host:
+		print("호스트가 점수 브로드캐스트를 시작합니다.")
+		network_manager.broadcast_all_scores()
+	else:
+		print("클라이언트가 호스트에게 점수 동기화를 요청합니다.")
+		network_manager.rpc_id(1, "request_score_broadcast")
+	
+	# 추가로 2초 후에도 다시 시도 (대비책)
+	await get_tree().create_timer(2.0).timeout
 	if is_host:
 		network_manager.broadcast_all_scores()
 
@@ -667,16 +680,36 @@ func setup_results_ui():
 	
 	result_container.add_child(HSeparator.new())
 	
+	# 점수 새로고침 버튼
+	var refresh_button = Button.new()
+	refresh_button.text = "🔄 점수 새로고침"
+	refresh_button.custom_minimum_size.y = 40
+	refresh_button.pressed.connect(_on_refresh_scores)
+	result_container.add_child(refresh_button)
+	
 	# 다시 시작 버튼
 	var restart_button = Button.new()
-	restart_button.text = "🔄 새 게임하기"
+	restart_button.text = "🆕 새 게임하기"
+	restart_button.custom_minimum_size.y = 50
 	restart_button.pressed.connect(restart_game)
 	result_container.add_child(restart_button)
 
+func _on_refresh_scores():
+	print("수동 점수 새로고침 요청")
+	if is_host:
+		print("호스트가 점수를 다시 브로드캐스트합니다.")
+		network_manager.broadcast_all_scores()
+	else:
+		print("클라이언트가 호스트에게 점수 새로고침을 요청합니다.")
+		network_manager.rpc_id(1, "request_score_broadcast")
+
 # 점수 관련 콜백 함수들
 func _on_score_updated(_player_id, _score):
-	# 개별 점수 업데이트 - 현재는 사용하지 않음
-	pass
+	# 개별 점수 업데이트시 호스트가 자동으로 브로드캐스트
+	if is_host and current_state == GameState.SHOW_RESULTS:
+		print("점수 업데이트 감지, 자동 브로드캐스트")
+		await get_tree().create_timer(0.5).timeout  # 약간의 지연
+		network_manager.broadcast_all_scores()
 
 func _on_all_scores_received(scores_data):
 	print("모든 플레이어 점수 수신: ", scores_data)
@@ -690,6 +723,14 @@ func update_all_scores_display(scores_data: Dictionary):
 	# 기존 점수 목록 지우기
 	for child in scores_container.get_children():
 		child.queue_free()
+	
+	if scores_data.is_empty():
+		var no_data_label = Label.new()
+		no_data_label.text = "❌ 점수 데이터가 없습니다. '점수 새로고침' 버튼을 눌러보세요."
+		no_data_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		no_data_label.add_theme_color_override("font_color", Color.RED)
+		scores_container.add_child(no_data_label)
+		return
 	
 	# 점수 순으로 정렬
 	var sorted_scores = []
