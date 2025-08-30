@@ -196,6 +196,9 @@ func _on_join_game(name_input, ip_input):
 	
 	if network_manager.join_server(host_ip):
 		is_host = false
+		# 접속 후 약간 대기한 후 플레이어 정보 전송
+		await get_tree().create_timer(0.5).timeout
+		network_manager.set_player_name(player_name)
 		setup_waiting_room()
 	else:
 		show_message("서버 연결에 실패했습니다!")
@@ -254,11 +257,24 @@ func update_player_list():
 		child.queue_free()
 	
 	# 새 플레이어 목록 추가
+	var player_count = 0
 	for player_id in network_manager.connected_players:
 		var player_info = network_manager.connected_players[player_id]
 		var player_label = Label.new()
-		player_label.text = "👤 %s" % player_info.name
+		if player_info.name == my_player_name:
+			player_label.text = "👤 %s (나)" % player_info.name
+		else:
+			player_label.text = "👤 %s" % player_info.name
 		players_container.add_child(player_label)
+		player_count += 1
+	
+	# 플레이어 수 표시
+	var count_label = Label.new()
+	count_label.text = "총 %d명 연결됨" % player_count
+	count_label.add_theme_color_override("font_color", Color.BLUE)
+	players_container.add_child(count_label)
+	
+	print("플레이어 목록 업데이트: %d명" % player_count)
 
 func _on_player_connected(_id, player_info):
 	print("플레이어 연결: ", player_info.name)
@@ -269,8 +285,17 @@ func _on_player_disconnected(_id):
 	update_player_list()
 
 func _on_start_question_phase():
-	if network_manager.connected_players.size() < 2:
-		show_message("최소 2명의 플레이어가 필요합니다!")
+	# 호스트 자신의 정보가 누락되었을 수 있으므로 다시 확인
+	if is_host and my_player_name != "":
+		network_manager.player_info.name = my_player_name
+		network_manager.connected_players[1] = network_manager.player_info.duplicate()
+	
+	var player_count = network_manager.connected_players.size()
+	print("현재 연결된 플레이어 수: ", player_count)
+	print("연결된 플레이어들: ", network_manager.connected_players.keys())
+	
+	if player_count < 2:
+		show_message("최소 2명의 플레이어가 필요합니다! (현재: %d명)" % player_count)
 		return
 	
 	# 모든 클라이언트에게 질문 입력 단계 시작 알림

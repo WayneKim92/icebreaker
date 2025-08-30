@@ -52,6 +52,11 @@ func join_server(ip: String):
 
 func set_player_name(player_name: String):
 	player_info.name = player_name
+	if is_server:
+		# 서버(호스트)인 경우 직접 업데이트
+		connected_players[1] = player_info.duplicate()
+		player_connected.emit(1, player_info)
+	
 	if multiplayer.multiplayer_peer:
 		rpc("update_player_info", multiplayer.get_unique_id(), player_info)
 
@@ -60,6 +65,7 @@ func update_player_info(id: int, info: Dictionary):
 	connected_players[id] = info
 	player_connected.emit(id, info)
 	print("플레이어 정보 업데이트: ", info.name, " (ID: ", id, ")")
+	print("현재 총 플레이어 수: ", connected_players.size())
 
 @rpc("any_peer")
 func submit_questions(questions: Array):
