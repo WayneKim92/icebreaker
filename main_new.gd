@@ -260,12 +260,12 @@ func update_player_list():
 		player_label.text = "👤 %s" % player_info.name
 		players_container.add_child(player_label)
 
-func _on_player_connected(_id, player_info):
+func _on_player_connected(id, player_info):
 	print("플레이어 연결: ", player_info.name)
 	update_player_list()
 
-func _on_player_disconnected(_id):
-	print("플레이어 연결 해제: ", _id)
+func _on_player_disconnected(id):
+	print("플레이어 연결 해제: ", id)
 	update_player_list()
 
 func _on_start_question_phase():
@@ -279,7 +279,7 @@ func _on_start_question_phase():
 
 func _on_game_state_changed(state_data):
 	var phase = state_data.phase
-	var _data = state_data.get("data", {})
+	var data = state_data.get("data", {})
 	
 	match phase:
 		"INPUT_QNA":
