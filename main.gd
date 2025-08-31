@@ -274,7 +274,7 @@ func setup_waiting_room():
 		ip_info.text = "다른 플레이어들에게 알려줄 IP: %s" % network_manager.get_local_ip()
 		ip_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		ip_info.add_theme_font_size_override("font_size", get_scaled_font_size(16))
-		ip_info.add_theme_color_override("font_color", Color.BLUE)
+		ip_info.add_theme_color_override("font_color", Color.ORANGE)
 		input_container.add_child(title)
 		input_container.add_child(ip_info)
 	else:
@@ -331,7 +331,7 @@ func update_player_list():
 	# 플레이어 수 표시
 	var count_label = Label.new()
 	count_label.text = "총 %d명 연결됨" % player_count
-	count_label.add_theme_color_override("font_color", Color.BLUE)
+	count_label.add_theme_color_override("font_color", Color.ORANGE)
 	players_container.add_child(count_label)
 	
 	print("플레이어 목록 업데이트: %d명" % player_count)
