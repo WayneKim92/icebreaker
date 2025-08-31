@@ -11,7 +11,7 @@ signal score_updated(player_id, score)
 signal all_scores_received(scores_data)
 
 const PORT = 7000
-const MAX_PLAYERS = 5
+const MAX_PLAYERS = 300  # 사실상 무제한 (Godot 기본 최대값)
 
 var is_server = false
 var player_info = {"name": "", "id": 0}
@@ -211,6 +211,8 @@ func _on_player_disconnected(id):
 func disconnect_from_game():
 	if multiplayer.multiplayer_peer:
 		multiplayer.multiplayer_peer.close()
+		multiplayer.multiplayer_peer = null
 	connected_players.clear()
 	player_info = {"name": "", "id": 0}
 	is_server = false
+	print("네트워크 연결이 정리되었습니다.")
