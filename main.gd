@@ -35,10 +35,68 @@ var input_scroll_container
 var game_scroll_container
 var result_scroll_container
 
+# 반응형 UI를 위한 기본 화면 크기
+var base_screen_size = Vector2(1280, 720)
+var current_scale_factor = 1.0
+
 func _ready():
 	setup_network()
 	setup_ui()
 	start_game()
+	
+	# 화면 크기 변경 감지
+	get_viewport().size_changed.connect(_on_viewport_size_changed)
+	_on_viewport_size_changed()  # 초기 크기 계산
+
+func _on_viewport_size_changed():
+	var viewport_size = get_viewport().get_visible_rect().size
+	var scale_x = viewport_size.x / base_screen_size.x
+	var scale_y = viewport_size.y / base_screen_size.y
+	current_scale_factor = min(scale_x, scale_y)
+	
+	# 최소/최대 스케일 제한
+	current_scale_factor = clamp(current_scale_factor, 0.5, 3.0)
+	
+	print("화면 크기 변경됨: ", viewport_size, " 스케일 팩터: ", current_scale_factor)
+	
+	# 기존 UI 요소들의 폰트 크기 업데이트
+	update_all_font_sizes()
+
+func get_scaled_font_size(base_size: int) -> int:
+	return int(base_size * current_scale_factor)
+
+func update_all_font_sizes():
+	# 제목 라벨 업데이트
+	if title_label:
+		title_label.add_theme_font_size_override("font_size", get_scaled_font_size(32))
+	
+	# 모든 컨테이너의 라벨들과 버튼들을 재귀적으로 업데이트
+	update_container_font_sizes(input_container)
+	update_container_font_sizes(game_container)
+	update_container_font_sizes(result_container)
+
+func update_container_font_sizes(container: Node):
+	if not container:
+		return
+		
+	for child in container.get_children():
+		if child is Label:
+			# 라벨의 현재 폰트 크기를 기준으로 스케일링
+			var current_size = child.get_theme_font_size("font_size")
+			if current_size > 0:
+				# 기본 크기를 추정하여 스케일링
+				var base_size = current_size / current_scale_factor if current_scale_factor > 0 else current_size
+				child.add_theme_font_size_override("font_size", get_scaled_font_size(int(base_size)))
+		elif child is Button:
+			# 버튼의 폰트 크기도 업데이트
+			var current_size = child.get_theme_font_size("font_size")
+			if current_size > 0:
+				var base_size = current_size / current_scale_factor if current_scale_factor > 0 else current_size
+				child.add_theme_font_size_override("font_size", get_scaled_font_size(int(base_size)))
+		
+		# 재귀적으로 자식 노드들도 처리
+		if child.get_child_count() > 0:
+			update_container_font_sizes(child)
 
 func setup_network():
 	# 네트워크 매니저 로드
@@ -65,7 +123,7 @@ func setup_ui():
 	title_label = Label.new()
 	title_label.text = "🎮 서로 알아가기 아이스 브레이킹 게임 🎮"
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title_label.add_theme_font_size_override("font_size", 32)
+	title_label.add_theme_font_size_override("font_size", get_scaled_font_size(32))
 	ui_container.add_child(title_label)
 	
 	# 스크롤 컨테이너 추가
@@ -121,7 +179,7 @@ func setup_network_selection():
 	var instruction = Label.new()
 	instruction.text = "네트워크 게임 설정"
 	instruction.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	instruction.add_theme_font_size_override("font_size", 24)
+	instruction.add_theme_font_size_override("font_size", get_scaled_font_size(24))
 	input_container.add_child(instruction)
 	
 	var info_label = Label.new()
@@ -215,7 +273,7 @@ func setup_waiting_room():
 		var ip_info = Label.new()
 		ip_info.text = "다른 플레이어들에게 알려줄 IP: %s" % network_manager.get_local_ip()
 		ip_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		ip_info.add_theme_font_size_override("font_size", 16)
+		ip_info.add_theme_font_size_override("font_size", get_scaled_font_size(16))
 		ip_info.add_theme_color_override("font_color", Color.BLUE)
 		input_container.add_child(title)
 		input_container.add_child(ip_info)
@@ -224,13 +282,13 @@ func setup_waiting_room():
 		input_container.add_child(title)
 	
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 24)
+	title.add_theme_font_size_override("font_size", get_scaled_font_size(24))
 	
 	input_container.add_child(HSeparator.new())
 	
 	var players_label = Label.new()
 	players_label.text = "연결된 플레이어들:"
-	players_label.add_theme_font_size_override("font_size", 18)
+	players_label.add_theme_font_size_override("font_size", get_scaled_font_size(18))
 	input_container.add_child(players_label)
 	
 	# 플레이어 목록 컨테이너 (동적으로 업데이트됨)
@@ -355,7 +413,7 @@ func setup_question_input():
 	var instruction = Label.new()
 	instruction.text = "%s님, 자신에 대한 질문과 답변을 3개 입력해주세요!" % my_player_name
 	instruction.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	instruction.add_theme_font_size_override("font_size", 18)
+	instruction.add_theme_font_size_override("font_size", get_scaled_font_size(18))
 	input_container.add_child(instruction)
 	
 	var sub_instruction = Label.new()
@@ -377,7 +435,7 @@ func setup_question_input():
 		
 		var q_label = Label.new()
 		q_label.text = "질문 %d:" % (i + 1)
-		q_label.add_theme_font_size_override("font_size", 16)
+		q_label.add_theme_font_size_override("font_size", get_scaled_font_size(16))
 		qna_container.add_child(q_label)
 		
 		var question_input = LineEdit.new()
@@ -388,7 +446,7 @@ func setup_question_input():
 		
 		var a_label = Label.new()
 		a_label.text = "답변:"
-		a_label.add_theme_font_size_override("font_size", 16)
+		a_label.add_theme_font_size_override("font_size", get_scaled_font_size(16))
 		qna_container.add_child(a_label)
 		
 		var answer_input = LineEdit.new()
@@ -414,7 +472,7 @@ func setup_question_input():
 	submit_button.text = "📝 질문 제출하기"
 	submit_button.custom_minimum_size.x = 250
 	submit_button.custom_minimum_size.y = 50
-	submit_button.add_theme_font_size_override("font_size", 18)
+	submit_button.add_theme_font_size_override("font_size", get_scaled_font_size(18))
 	submit_button.pressed.connect(_on_submit_questions.bind(qna_inputs))
 	input_container.add_child(submit_button)
 	
@@ -502,7 +560,7 @@ func show_current_question():
 	var question_label = Label.new()
 	question_label.text = "질문 %d/%d: %s" % [current_question_index + 1, all_questions.size(), current_qna["question"]]
 	question_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	question_label.add_theme_font_size_override("font_size", 24)
+	question_label.add_theme_font_size_override("font_size", get_scaled_font_size(24))
 	question_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	game_container.add_child(question_label)
 	
@@ -510,7 +568,7 @@ func show_current_question():
 	var answer_label = Label.new()
 	answer_label.text = "답변: %s" % current_qna["answer"]
 	answer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	answer_label.add_theme_font_size_override("font_size", 20)
+	answer_label.add_theme_font_size_override("font_size", get_scaled_font_size(20))
 	answer_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	game_container.add_child(answer_label)
 	
@@ -571,7 +629,7 @@ func show_round_results(correct_qna, my_guess):
 	var result_label = Label.new()
 	result_label.text = "정답: %s" % correct_player
 	result_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	result_label.add_theme_font_size_override("font_size", 28)
+	result_label.add_theme_font_size_override("font_size", get_scaled_font_size(28))
 	game_container.add_child(result_label)
 	
 	# 내 답변 결과
@@ -645,14 +703,14 @@ func setup_results_ui():
 	var title = Label.new()
 	title.text = "🏆 게임 종료! 최종 결과 🏆"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 32)
+	title.add_theme_font_size_override("font_size", get_scaled_font_size(32))
 	result_container.add_child(title)
 	
 	# 내 최종 점수
 	var my_score_label = Label.new()
 	my_score_label.text = "내 최종 점수: %d점" % player_scores[my_player_name]
 	my_score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	my_score_label.add_theme_font_size_override("font_size", 24)
+	my_score_label.add_theme_font_size_override("font_size", get_scaled_font_size(24))
 	my_score_label.add_theme_color_override("font_color", Color.BLUE)
 	result_container.add_child(my_score_label)
 	
@@ -662,7 +720,7 @@ func setup_results_ui():
 	var all_scores_title = Label.new()
 	all_scores_title.text = "📊 모든 플레이어 점수"
 	all_scores_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	all_scores_title.add_theme_font_size_override("font_size", 20)
+	all_scores_title.add_theme_font_size_override("font_size", get_scaled_font_size(20))
 	result_container.add_child(all_scores_title)
 	
 	# 점수 목록 컨테이너 (동적으로 업데이트됨)
@@ -762,7 +820,7 @@ func update_all_scores_display(scores_data: Dictionary):
 		var rank_label = Label.new()
 		rank_label.text = rank_text
 		rank_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		rank_label.add_theme_font_size_override("font_size", 18)
+		rank_label.add_theme_font_size_override("font_size", get_scaled_font_size(18))
 		rank_label.add_theme_color_override("font_color", rank_color)
 		
 		# 자신의 점수는 배경색으로 강조
