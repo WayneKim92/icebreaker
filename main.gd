@@ -855,6 +855,21 @@ func clear_container(container):
 		child.queue_free()
 
 func show_message(message):
-	# 간단한 메시지 표시
-	print(message)
-	# TODO: 더 정교한 메시지 UI 추가 가능
+	# 실제 UI 다이얼로그로 메시지 표시
+	print(message)  # 디버그용 로그는 유지
+	
+	# AcceptDialog를 사용한 메시지 팝업
+	var dialog = AcceptDialog.new()
+	dialog.dialog_text = message
+	dialog.title = "알림"
+	dialog.min_size = Vector2(400, 200)
+	
+	# 다이얼로그를 현재 씬에 추가
+	add_child(dialog)
+	
+	# 팝업 표시
+	dialog.popup_centered()
+	
+	# 다이얼로그가 닫힐 때 자동으로 제거
+	dialog.confirmed.connect(func(): dialog.queue_free())
+	dialog.close_requested.connect(func(): dialog.queue_free())
