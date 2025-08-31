@@ -24,6 +24,7 @@ var current_answers = {}  # 현재 질문에 대한 각 플레이어의 답변
 var network_manager
 var my_player_name = ""
 var is_host = false
+var questions_per_player = 3  # 기본값 3개, 호스트가 설정 가능
 
 # UI 노드들
 var ui_container
@@ -201,11 +202,38 @@ func setup_network_selection():
 	
 	input_container.add_child(HSeparator.new())
 	
+	# 질문 수 선택 (호스트만)
+	var questions_section = VBoxContainer.new()
+	questions_section.add_theme_constant_override("separation", 10)
+	
+	var questions_label = Label.new()
+	questions_label.text = "각 플레이어당 질문 수 설정 (1~10개):"
+	questions_label.add_theme_font_size_override("font_size", get_scaled_font_size(16))
+	questions_section.add_child(questions_label)
+	
+	var questions_input = SpinBox.new()
+	questions_input.min_value = 1
+	questions_input.max_value = 10
+	questions_input.value = 3  # 기본값
+	questions_input.step = 1
+	questions_input.custom_minimum_size.x = 150
+	questions_input.custom_minimum_size.y = 35
+	questions_section.add_child(questions_input)
+	
+	var questions_info = Label.new()
+	questions_info.text = "💡 질문이 많을수록 게임이 더 재미있어집니다!"
+	questions_info.add_theme_color_override("font_color", Color.GRAY)
+	questions_info.add_theme_font_size_override("font_size", get_scaled_font_size(12))
+	questions_section.add_child(questions_info)
+	
+	input_container.add_child(questions_section)
+	input_container.add_child(HSeparator.new())
+	
 	# 호스트 버튼
 	var host_button = Button.new()
 	host_button.text = "🏠 게임 호스트하기 (방 만들기)"
 	host_button.custom_minimum_size.y = 50
-	host_button.pressed.connect(_on_host_game.bind(name_input))
+	host_button.pressed.connect(_on_host_game.bind(name_input, questions_input))
 	input_container.add_child(host_button)
 	
 	# 참가 섹션
@@ -225,11 +253,15 @@ func setup_network_selection():
 	input_container.add_child(join_button)
 
 # 네트워크 콜백 함수들
-func _on_host_game(name_input):
+func _on_host_game(name_input, questions_input):
 	var player_name = name_input.text.strip_edges()
 	if player_name == "":
 		show_message("이름을 입력해주세요!")
 		return
+	
+	# 질문 수 설정
+	questions_per_player = int(questions_input.value)
+	print("호스트가 설정한 질문 수: ", questions_per_player)
 	
 	my_player_name = player_name
 	network_manager.set_player_name(player_name)
@@ -359,7 +391,7 @@ func _on_start_question_phase():
 		return
 	
 	# 모든 클라이언트에게 질문 입력 단계 시작 알림
-	network_manager.rpc("start_game_phase", "INPUT_QNA")
+	network_manager.rpc("start_game_phase", "INPUT_QNA", {"questions_per_player": questions_per_player})
 	setup_question_input()
 
 func _on_game_state_changed(state_data):
@@ -368,6 +400,10 @@ func _on_game_state_changed(state_data):
 	
 	match phase:
 		"INPUT_QNA":
+			# 호스트가 설정한 질문 수 받기
+			if data.has("questions_per_player"):
+				questions_per_player = data.questions_per_player
+				print("호스트가 설정한 질문 수를 받았습니다: ", questions_per_player)
 			setup_question_input()
 		"START_QUIZ":
 			print("퀴즈 시작 신호를 받았습니다!")
@@ -411,7 +447,7 @@ func setup_question_input():
 	clear_container(input_container)
 	
 	var instruction = Label.new()
-	instruction.text = "%s님, 자신에 대한 질문과 답변을 3개 입력해주세요!" % my_player_name
+	instruction.text = "%s님, 자신에 대한 질문과 답변을 %d개 입력해주세요!" % [my_player_name, questions_per_player]
 	instruction.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	instruction.add_theme_font_size_override("font_size", get_scaled_font_size(18))
 	input_container.add_child(instruction)
@@ -429,7 +465,7 @@ func setup_question_input():
 	player_section.add_theme_constant_override("separation", 8)
 	
 	var qna_inputs = []
-	for i in range(3):
+	for i in range(questions_per_player):
 		var qna_container = VBoxContainer.new()
 		qna_container.add_theme_constant_override("separation", 5)
 		
@@ -458,7 +494,7 @@ func setup_question_input():
 		qna_inputs.append({"question": question_input, "answer": answer_input})
 		
 		# 질문 간 구분선
-		if i < 2:  # 마지막 질문 후에는 구분선 없음
+		if i < questions_per_player - 1:  # 마지막 질문 후에는 구분선 없음
 			var separator = HSeparator.new()
 			separator.add_theme_constant_override("separation", 10)
 			qna_container.add_child(separator)
@@ -497,8 +533,8 @@ func _on_submit_questions(qna_inputs):
 				"player": my_player_name
 			})
 	
-	if questions.size() < 3:
-		show_message("3개의 질문을 모두 입력해주세요!")
+	if questions.size() < questions_per_player:
+		show_message("%d개의 질문을 모두 입력해주세요!" % questions_per_player)
 		return
 	
 	print("%s가 질문 %d개를 제출합니다." % [my_player_name, questions.size()])
@@ -843,6 +879,7 @@ func restart_game():
 	current_question_index = 0
 	my_player_name = ""
 	is_host = false
+	questions_per_player = 3  # 질문 수도 초기화
 	
 	# UI 초기화
 	result_scroll_container.visible = false
